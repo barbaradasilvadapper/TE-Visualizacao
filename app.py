@@ -135,6 +135,47 @@ def aplicar_filtro_periodo_mensal(df):
     return df
 
 
+
+
+def criar_heatmap_mensal(df_mensal, titulo):
+    anos = sorted([int(a) for a in df_mensal["ano"].dropna().unique()], reverse=True)
+
+    grade = pd.MultiIndex.from_product(
+        [anos, range(1, 13)],
+        names=["ano", "mes_numero"]
+    ).to_frame(index=False)
+    grade["mes"] = grade["mes_numero"].map({i + 1: mes for i, mes in enumerate(MESES_ORDEM)})
+
+    completo = grade.merge(
+        df_mensal[["ano", "mes_numero", "total"]],
+        on=["ano", "mes_numero"],
+        how="left"
+    ).fillna({"total": 0})
+
+    matriz = completo.pivot(index="ano", columns="mes", values="total").reindex(
+        index=anos,
+        columns=MESES_ORDEM,
+    )
+
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=matriz.values,
+            x=MESES_ORDEM,
+            y=[str(a) for a in anos],
+            colorbar=dict(title="Total"),
+            hovertemplate="Ano: %{y}<br>Mês: %{x}<br>Total: %{z}<extra></extra>",
+        )
+    )
+    fig.update_layout(
+        title=titulo,
+        height=max(420, 90 * len(anos)),
+        xaxis_title="Mês",
+        yaxis_title="Ano",
+    )
+    fig.update_xaxes(type="category", categoryorder="array", categoryarray=MESES_ORDEM)
+    fig.update_yaxes(type="category", categoryorder="array", categoryarray=[str(a) for a in anos])
+    return fig
+
 def mostrar_metricas_basicas(df):
     total = int(df["valor"].sum()) if len(df) > 0 else 0
     qtd_indicadores = df["indicador_completo"].nunique() if "indicador_completo" in df.columns else 0
@@ -148,7 +189,7 @@ def mostrar_metricas_basicas(df):
 
 def mostrar_metricas_demanda(df):
     total = int(df["valor"].sum()) if len(df) > 0 else 0
-    indicadores = df["indicador_completo"].nunique() if "indicador_completo" in df.columns else 0
+    categorias = df["categoria"].nunique() if "categoria" in df.columns else 0
     anos = sorted(df["ano"].dropna().unique())
     periodo = (
         f"{int(anos[0])} – {int(anos[-1])}"
@@ -158,7 +199,7 @@ def mostrar_metricas_demanda(df):
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Atendimentos totais", f"{total:,.0f}".replace(",", "."))
-    c2.metric("Indicadores técnicos", indicadores)
+    c2.metric("Categorias analisadas", categorias)
     c3.metric("Período analisado", periodo)
 
 
@@ -205,7 +246,7 @@ def mostrar_metricas_movimentacao(df):
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Total de movimentações", f"{total:,.0f}".replace(",", "."))
-    c2.metric("Indicador mais frequente", top_mov)
+    c2.metric("Tipo mais frequente", top_mov)
     c3.metric("Período crítico", top_periodo)
 
 
@@ -263,7 +304,7 @@ def mostrar_metricas_q5(df):
 
     c1, c2, c3 = st.columns(3)
     c1.metric("Acolhidos contabilizados", f"{total_acolhidos:,.0f}".replace(",", "."))
-    c2.metric("Indicadores de saúde/educação", grupos)
+    c2.metric("Grupos analisados", grupos)
     c3.metric("Maior crescimento proporcional", maior_crescimento)
 
 
@@ -275,9 +316,9 @@ def mostrar_metricas_atividades(df, metrica):
         principal = df.groupby("atividade")["valor"].sum().idxmax()
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Valor total selecionado", f"{total:,.0f}".replace(",", "."))
-    c2.metric("Atividades distintas", atividades)
-    c3.metric("Atividade com maior alcance", principal)
+    c1.metric("Eventos realizados", f"{total:,.0f}".replace(",", "."))
+    c2.metric("Tipos de evento", atividades)
+    c3.metric("Evento mais frequente", principal)
 
 
 def classificar_movimentacao(linha):
@@ -296,14 +337,46 @@ def classificar_movimentacao(linha):
 
 
 def classificar_grupo_q5(linha):
-    if contem_palavras(linha, ["acolhido", "acolhidos", "acolhida", "acolhidas", "acolhimento"]):
+    texto = texto_linha(linha)
+    if any(p in texto for p in [
+        "efetivos na casa",
+        "efetivo na casa",
+    ]):
         return "Número de acolhidos"
-    if contem_palavras(linha, ["saúde mental", "saude mental", "psicol", "psiquiatr", "terapia"]):
+
+    if any(p in texto for p in [
+        "saúde mental",
+        "saude mental",
+    ]):
         return "Saúde mental"
-    if contem_palavras(linha, ["saúde clínica", "saude clinica", "saúde clinica", "saude clínica", "clínica", "clinica", "médic", "medic", "consulta", "enferm"]):
+
+    if any(p in texto for p in [
+        "saúde clínica",
+        "saude clinica",
+        "saúde clinica",
+        "saude clínica",
+    ]):
         return "Saúde clínica"
-    if contem_palavras(linha, ["educação", "educacao", "escola", "escolar", "pedag", "ensino"]):
+
+    if any(p in texto for p in [
+        "ensino eja",
+        "ensino infantil",
+        "ensino regular",
+        "scfv",
+        "educação",
+        "educacao",
+        "escola",
+        "escolar",
+        "matriculados",
+        "matriculado",
+        "aguardando vaga",
+        "reforço escolar",
+        "reforco escolar",
+        "psicopedagoga",
+        "trabalho educativo",
+    ]):
         return "Educação"
+
     return None
 
 
@@ -343,7 +416,7 @@ pagina = st.sidebar.radio(
         "3. Padrões sazonais e movimentação",
         "4. Estabilidade da permanência",
         "5. Acolhidos, saúde e educação",
-        "6. Distribuição e alcance das atividades de 2025",
+        "6. Eventos realizados em 2025",
     ],
     label_visibility="collapsed",
 )
@@ -389,20 +462,64 @@ if pagina == "1. Evolução da demanda e sobrecarga":
             .sort_values(["ano"])
         )
 
+        df_q1_linha = (
+    df_q1.groupby(["ano", "mes_numero", "mes", "indicador_completo"], as_index=False)
+    .agg(valor=("valor", "sum"))
+    .sort_values(["ano", "mes_numero"])
+)
+
+        df_q1_linha["ano_label"] = df_q1_linha["ano"].astype(int).astype(str)
+
+        ordem_meses = [
+            "JAN", "FEV", "MAR", "ABR", "MAI", "JUN",
+            "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"
+        ]
+
         fig = px.line(
             df_q1_linha,
-            x="ano",
+            x="mes",
             y="valor",
+            color="ano_label",
             facet_col="indicador_completo",
             facet_col_wrap=2,
             markers=True,
-            title="Evolução anual dos atendimentos por indicador",
-            labels={"ano": "Ano", "valor": "Quantidade", "indicador_completo": "Indicador"},
-            hover_data={"ano": True, "valor": True, "indicador_completo": True},
+            title="Evolução mensal dos atendimentos por indicador",
+            labels={
+                "mes": "Mês",
+                "valor": "Quantidade",
+                "ano_label": "Ano",
+                "indicador_completo": "Indicador",
+            },
+            hover_data={
+                "ano": True,
+                "mes": True,
+                "valor": True,
+                "indicador_completo": True,
+            },
+            category_orders={
+                "mes": ordem_meses,
+                "ano_label": [str(int(a)) for a in sorted(df_q1_linha["ano"].dropna().unique())],
+            },
         )
+
         fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-        fig.update_xaxes(title_text="Ano", tickmode="array", tickvals=sorted(df_q1_linha["ano"].dropna().unique()), ticktext=[str(int(a)) for a in sorted(df_q1_linha["ano"].dropna().unique())])
-        fig.update_layout(height=900, showlegend=False)
+
+        fig.update_xaxes(
+            tickmode="array",
+            tickvals=ordem_meses,
+            ticktext=ordem_meses,
+            showticklabels=True,
+            matches=None,
+            type="category",
+        )
+
+        fig.update_yaxes(title_text="Quantidade")
+
+        fig.update_layout(
+            height=900,
+            legend_title_text="Ano",
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
         c1, c2 = st.columns([1.2, 1])
@@ -412,19 +529,7 @@ if pagina == "1. Evolução da demanda e sobrecarga":
                 .agg(total=("valor", "sum"))
                 .sort_values(["ano", "mes_numero"])
             )
-            anos_heat = sorted([int(a) for a in df_heat["ano"].dropna().unique()])
-            df_heat["ano_label"] = df_heat["ano"].dropna().astype(int).astype(str)
-            fig_heat = px.density_heatmap(
-                df_heat,
-                x="mes",
-                y="ano_label",
-                z="total",
-                category_orders={"mes": MESES_ORDEM, "ano_label": [str(a) for a in anos_heat]},
-                title="Heatmap de sobrecarga mensal",
-                labels={"mes": "Mês", "ano_label": "Ano", "total": "Total"},
-            )
-            fig_heat.update_yaxes(tickmode="array", tickvals=[str(a) for a in anos_heat], ticktext=[str(a) for a in anos_heat])
-            fig_heat.update_layout(height=500)
+            fig_heat = criar_heatmap_mensal(df_heat, "Heatmap de sobrecarga mensal")
             st.plotly_chart(fig_heat, use_container_width=True)
 
         with c2:
@@ -559,19 +664,7 @@ elif pagina == "3. Padrões sazonais e movimentação":
             .agg(total=("valor", "sum"))
             .sort_values(["ano", "mes_numero"])
         )
-        anos_heat = sorted([int(a) for a in df_q3_heat["ano"].dropna().unique()])
-        df_q3_heat["ano_label"] = df_q3_heat["ano"].dropna().astype(int).astype(str)
-        fig_heat = px.density_heatmap(
-            df_q3_heat,
-            x="mes",
-            y="ano_label",
-            z="total",
-            category_orders={"mes": MESES_ORDEM, "ano_label": [str(a) for a in anos_heat]},
-            title="Heatmap de períodos críticos de movimentação",
-            labels={"mes": "Mês", "ano_label": "Ano", "total": "Total"},
-        )
-        fig_heat.update_yaxes(tickmode="array", tickvals=[str(a) for a in anos_heat], ticktext=[str(a) for a in anos_heat])
-        fig_heat.update_layout(height=500)
+        fig_heat = criar_heatmap_mensal(df_q3_heat, "Heatmap de períodos críticos de movimentação")
         st.plotly_chart(fig_heat, use_container_width=True)
     else:
         st.info("Nenhum indicador de movimentação encontrado para os filtros selecionados.")
@@ -679,10 +772,10 @@ elif pagina == "4. Estabilidade da permanência":
 # Dashboard 5 — Pergunta 5
 
 elif pagina == "5. Acolhidos, saúde e educação":
-    st.header("Acolhidos x saúde e educação")
+    st.header("Efetivos na casa x saúde e educação")
     st.markdown(
-        "Este dashboard compara indicadores de saúde e educação com o número de acolhidos "
-        "ao longo dos anos."
+        "Este dashboard compara o número de efetivos na casa, usado como referência para "
+        "acolhidos, com indicadores relacionados à saúde e à educação ao longo dos anos."
     )
 
     df_q5 = df.copy()
@@ -693,10 +786,19 @@ elif pagina == "5. Acolhidos, saúde e educação":
     df_q5, anos_q5 = aplicar_filtro_anos(df_q5, "Anos")
 
     grupos_disponiveis = sorted(df_q5["grupo_analise"].dropna().unique())
-    grupos_selecionados = st.multiselect("Grupos de análise", grupos_disponiveis, default=grupos_disponiveis)
+    grupos_selecionados = st.multiselect(
+        "Grupos de análise",
+        grupos_disponiveis,
+        default=grupos_disponiveis,
+    )
+
+    # Mantém uma cópia antes do filtro de grupos.
+    # Assim a KPI de efetivos na casa não vira 0 se o grupo for desmarcado no filtro.
+    df_q5_metricas = df_q5.copy()
+
     df_q5 = df_q5[df_q5["grupo_analise"].isin(grupos_selecionados)].copy()
 
-    mostrar_metricas_q5(df_q5)
+    mostrar_metricas_q5(df_q5_metricas)
 
     if len(df_q5) > 0:
         df_q5_anual = (
@@ -704,6 +806,7 @@ elif pagina == "5. Acolhidos, saúde e educação":
             .agg(valor=("valor", "sum"))
             .sort_values(["ano", "grupo_analise"])
         )
+
         df_q5_pivot = df_q5_anual.pivot_table(
             index="ano",
             columns="grupo_analise",
@@ -713,54 +816,110 @@ elif pagina == "5. Acolhidos, saúde e educação":
         ).reset_index()
 
         fig_combo = make_subplots(specs=[[{"secondary_y": True}]])
+
         if "Número de acolhidos" in df_q5_pivot.columns:
             fig_combo.add_trace(
-                go.Bar(x=df_q5_pivot["ano"], y=df_q5_pivot["Número de acolhidos"], name="Número de acolhidos"),
+                go.Bar(
+                    x=df_q5_pivot["ano"],
+                    y=df_q5_pivot["Número de acolhidos"],
+                    name="Efetivos na casa",
+                ),
                 secondary_y=False,
             )
+
         for grupo in ["Saúde mental", "Saúde clínica", "Educação"]:
             if grupo in df_q5_pivot.columns:
                 fig_combo.add_trace(
-                    go.Scatter(x=df_q5_pivot["ano"], y=df_q5_pivot[grupo], mode="lines+markers", name=grupo),
+                    go.Scatter(
+                        x=df_q5_pivot["ano"],
+                        y=df_q5_pivot[grupo],
+                        mode="lines+markers",
+                        name=grupo,
+                    ),
                     secondary_y=True,
                 )
-        fig_combo.update_layout(title="Acolhidos x indicadores de saúde e educação", height=600, hovermode="x unified")
-        fig_combo.update_xaxes(tickmode="array", tickvals=df_q5_pivot["ano"], ticktext=df_q5_pivot["ano"].astype(str))
-        fig_combo.update_yaxes(title_text="Número de acolhidos", secondary_y=False)
-        fig_combo.update_yaxes(title_text="Indicadores", secondary_y=True)
+
+        fig_combo.update_layout(
+            title="Efetivos na casa x indicadores de saúde e educação",
+            height=600,
+            hovermode="x unified",
+        )
+
+        fig_combo.update_xaxes(
+            tickmode="array",
+            tickvals=df_q5_pivot["ano"],
+            ticktext=df_q5_pivot["ano"].astype(int).astype(str),
+            title_text="Ano",
+        )
+
+        fig_combo.update_yaxes(
+            title_text="Efetivos na casa",
+            secondary_y=False,
+        )
+
+        fig_combo.update_yaxes(
+            title_text="Quantidade de indicadores",
+            secondary_y=True,
+        )
+
         st.plotly_chart(fig_combo, use_container_width=True)
 
         df_q5_indice = df_q5_anual.copy()
+
+        df_q5_indice["grupo_label"] = df_q5_indice["grupo_analise"].replace({
+            "Número de acolhidos": "Efetivos na casa"
+        })
+
         df_q5_indice["valor_base"] = df_q5_indice.groupby("grupo_analise")["valor"].transform("first")
+
         df_q5_indice["indice_base_100"] = np.where(
             df_q5_indice["valor_base"] != 0,
             (df_q5_indice["valor"] / df_q5_indice["valor_base"]) * 100,
             np.nan,
         )
+
         fig_indice = px.line(
             df_q5_indice,
             x="ano",
             y="indice_base_100",
-            color="grupo_analise",
+            color="grupo_label",
             markers=True,
             title="Evolução proporcional — índice base 100",
-            labels={"ano": "Ano", "indice_base_100": "Índice base 100", "grupo_analise": "Grupo"},
+            labels={
+                "ano": "Ano",
+                "indice_base_100": "Índice base 100",
+                "grupo_label": "Grupo",
+            },
             hover_data={"valor": True},
         )
+
         anos_indice = sorted(df_q5_indice["ano"].dropna().unique())
-        fig_indice.update_xaxes(tickmode="array", tickvals=anos_indice, ticktext=[str(int(a)) for a in anos_indice])
-        fig_indice.update_layout(height=550, hovermode="x unified")
+
+        fig_indice.update_xaxes(
+            tickmode="array",
+            tickvals=anos_indice,
+            ticktext=[str(int(a)) for a in anos_indice],
+            title_text="Ano",
+        )
+
+        fig_indice.update_yaxes(title_text="Índice base 100")
+
+        fig_indice.update_layout(
+            height=550,
+            hovermode="x unified",
+        )
+
         st.plotly_chart(fig_indice, use_container_width=True)
+
     else:
         st.info("Nenhum registro encontrado com os filtros atuais.")
 
 # Dashboard 6 — Pergunta 6
 
 else:
-    st.header("Atividades de 2025")
+    st.header("Eventos realizados em 2025")
     st.markdown(
-        "Este dashboard analisa as atividades registradas em 2025 a partir da coluna de atividade/indicador completo, "
-        "mostrando alcance e distribuição dos principais registros do ano."
+        "Pergunta norteadora: quais eventos foram mais realizados em 2025 e como eles se distribuíram ao longo dos meses?"
     )
 
     df_q6 = df[df["ano"] == 2025].copy()
@@ -769,15 +928,8 @@ else:
     df_q6 = df_q6[df_q6["atividade"].notna()].copy()
 
     if len(df_q6) > 0:
-        metricas_base = sorted(df_q6["metrica_q6"].dropna().unique())
-        ordem_metricas = ["Número de Participantes", "Carga Horária Total", "Quantidade de Eventos Realizados"]
-        metricas_disponiveis = [m for m in ordem_metricas if m in metricas_base]
-        if not metricas_disponiveis:
-            metricas_disponiveis = metricas_base
-        metrica_q6 = metricas_disponiveis[0]
-
-        metrica_q6 = st.selectbox("Métrica", metricas_disponiveis, index=0)
-        df_q6_filtrado = df_q6[df_q6["metrica_q6"] == metrica_q6].copy()
+        metrica_q6 = "Quantidade de eventos realizados"
+        df_q6_filtrado = df_q6[df_q6["metrica_q6"] == "Quantidade de Eventos Realizados"].copy()
 
         mostrar_metricas_atividades(df_q6_filtrado, metrica_q6)
 
@@ -793,7 +945,7 @@ else:
                 df_treemap,
                 path=["atividade"],
                 values="valor",
-                title=f"Treemap das atividades de 2025 por {metrica_q6}",
+                title="Distribuição dos eventos realizados em 2025",
                 hover_data={"valor": True},
             )
             fig_tree.update_layout(height=700)
@@ -805,13 +957,13 @@ else:
                 x="valor",
                 y="atividade",
                 orientation="h",
-                title=f"Top 10 atividades de 2025 por {metrica_q6}",
-                labels={"valor": metrica_q6, "atividade": "Atividade"},
+                title="Top 10 eventos mais realizados em 2025",
+                labels={"valor": "Quantidade de eventos", "atividade": "Evento"},
             )
             fig_top.update_layout(height=600, yaxis={"categoryorder": "total ascending"})
             st.plotly_chart(fig_top, use_container_width=True)
         else:
-            st.info("Existem registros para 2025, mas todos os valores da métrica selecionada são zero.")
+            st.info("Existem registros para 2025, mas todos os valores de eventos realizados são zero.")
 
         df_q6_mes = (
             df_q6_filtrado.groupby(["mes_numero", "mes"], as_index=False)
@@ -826,12 +978,12 @@ else:
                 x="mes",
                 y="valor",
                 category_orders={"mes": MESES_ORDEM},
-                title=f"Distribuição mensal das atividades de 2025 por {metrica_q6}",
-                labels={"mes": "Mês", "valor": metrica_q6},
+                title="Distribuição mensal dos eventos realizados em 2025",
+                labels={"mes": "Mês", "valor": "Quantidade de eventos"},
             )
             fig_mes.update_layout(height=600)
             st.plotly_chart(fig_mes, use_container_width=True)
     else:
-        st.info("Nenhum registro de atividade encontrado para 2025 com as palavras-chave atuais.")
+        st.info("Nenhum registro de evento encontrado para 2025 com as palavras-chave atuais.")
 
 st.caption("Fonte: base tratada lem_consolidado_2021_2025.csv")
