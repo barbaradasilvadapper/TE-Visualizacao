@@ -159,14 +159,17 @@ st.markdown(
 
     .stMultiSelect div[data-baseweb="tag"],
     div[data-baseweb="tag"] {
-        background: #FFFFFF !important;
-        border: 1px solid #93C5FD !important;
+        background: var(--fp-accent) !important;
+        border: 1px solid var(--fp-accent) !important;
         border-radius: 999px !important;
         padding: 0.28rem 0.72rem !important;
-        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.08);
+        box-shadow: 0 6px 16px rgba(37, 99, 235, 0.16);
+        color: #FFFFFF !important;
     }
 
     .stMultiSelect div[data-baseweb="tag"] span,
+    .stMultiSelect div[data-baseweb="tag"] div,
+    .stMultiSelect div[data-baseweb="tag"] a,
     .stMultiSelect div[data-baseweb="tag"] svg,
     .stMultiSelect div[data-baseweb="tag"] path,
     .stMultiSelect div[data-baseweb="tag"] button,
@@ -262,6 +265,20 @@ st.markdown(
         margin: 0 !important;
         padding: 0.7rem 0.9rem !important;
         line-height: 1.2 !important;
+    }
+
+    div[data-baseweb="menu"] > div,
+    ul[role="listbox"] > li,
+    div[role="listbox"] > div,
+    div[data-baseweb="menu"] [aria-disabled="true"],
+    ul[role="listbox"] [aria-disabled="true"],
+    div[role="listbox"] [aria-disabled="true"] {
+        background: #FFFFFF !important;
+        color: #64748B !important;
+        fill: #64748B !important;
+        stroke: #64748B !important;
+        -webkit-text-fill-color: #64748B !important;
+        box-shadow: none !important;
     }
 
     div[data-baseweb="popover"] [role="option"]:hover,
@@ -710,9 +727,9 @@ def criar_heatmap_mensal(df_mensal, titulo):
             x=MESES_ORDEM,
             y=[str(a) for a in anos],
             colorscale=[
-                [0.0, "#0B4F9E"],
+                [0.0, "#E6F2FF"],
                 [0.5, "#4C9BE8"],
-                [1.0, "#E6F2FF"],
+                [1.0, "#0B4F9E"],
             ],
             colorbar=dict(title="Registros", thickness=18, bgcolor="#FFFFFF"),
             hovertemplate="Ano: %{y}<br>Mês: %{x}<br>Registros: %{z}<extra></extra>",
