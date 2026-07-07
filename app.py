@@ -1372,33 +1372,40 @@ elif pagina == "2. Desdobramentos técnicos":
                 .index
                 .tolist()
             )
-            fig_heat_tecnico = px.density_heatmap(
-                anual_heat,
-                x="ano",
-                y="indicador_completo",
-                z="registros_tecnicos",
-                histfunc="sum",
-                color_continuous_scale=[
-                    [0.0, "#DBEAFE"],
-                    [0.45, "#60A5FA"],
-                    [0.75, "#2563EB"],
-                    [1.0, "#EC4899"],
-                ],
+            anos_heat = sorted(anual_heat["ano"].dropna().unique())
+            anos_labels = [str(int(a)) for a in anos_heat]
+            matriz_heat = (
+                anual_heat.assign(ano_label=anual_heat["ano"].astype(int).astype(str))
+                .pivot(index="indicador_completo", columns="ano_label", values="registros_tecnicos")
+                .reindex(index=ordem_tipos, columns=anos_labels)
+                .fillna(0)
+            )
+            fig_heat_tecnico = go.Figure(
+                data=go.Heatmap(
+                    z=matriz_heat.values,
+                    x=anos_labels,
+                    y=ordem_tipos,
+                    xgap=0,
+                    ygap=0,
+                    colorscale=[
+                        [0.0, "#DBEAFE"],
+                        [0.45, "#60A5FA"],
+                        [0.75, "#2563EB"],
+                        [1.0, "#EC4899"],
+                    ],
+                    colorbar=dict(title="Registros técnicos", bgcolor="#FFFFFF"),
+                    hovertemplate="Ano: %{x}<br>Tipo: %{y}<br>Registros técnicos: %{z}<extra></extra>",
+                )
+            )
+            fig_heat_tecnico.update_layout(
                 title="Mapa de concentração dos desdobramentos por ano",
-                labels={
-                    "ano": "Ano",
-                    "indicador_completo": "Tipo de desdobramento",
-                    "registros_tecnicos": "Registros técnicos",
-                },
-                category_orders={"indicador_completo": ordem_tipos},
+                xaxis_title="Ano",
+                yaxis_title="Tipo de desdobramento",
             )
             fig_heat_tecnico.update_xaxes(
-                tickmode="array",
-                tickvals=sorted(anual_heat["ano"].dropna().unique()),
-                ticktext=[str(int(a)) for a in sorted(anual_heat["ano"].dropna().unique())],
-            )
-            fig_heat_tecnico.update_coloraxes(
-                colorbar=dict(title="Registros técnicos")
+                type="category",
+                categoryorder="array",
+                categoryarray=anos_labels,
             )
             aplicar_layout_figura(fig_heat_tecnico, 620)
             st.plotly_chart(fig_heat_tecnico, use_container_width=True)
